@@ -1,16 +1,36 @@
 ---I'm For Key Metrics // Short-term 
 
+CREATE TEMP TABLE imfor_activity_YTD AS (
+  SELECT
+    e.eventid,
+    e.dateoffsetbegin::date AS "date",
+    e.createdbycommitteename AS "committee",
+    l.city,
+    l.state,
+    e.eventname,
+    e.eventdescription
+  FROM
+    vansync.ppfa_events_mym e
+    LEFT JOIN vansync.ppfa_eventslocations_mym loc USING (eventid)
+    LEFT JOIN vansync.ppfa_locations_mym l USING (locationid)
+    LEFT JOIN vansync.ppfa_eventscodes_mym ec USING (eventid)
+  WHERE
+    ec.codeid IN (1015656, 1016813, 1019521)
+    AND e.dateoffsetbegin >= '2026-01-01'
+    AND e.dateoffsetbegin < CURRENT_DATE
+  ORDER BY
+    1
+);
 
 
 
-
-rop table if exists reporting.imfor_events_ytd;
+drop table if exists reporting.imfor_events_ytd26;
 
 CREATE TEMP TABLE imfor_events_YTD AS (
   SELECT
     e.eventid,
     e.dateoffsetbegin::date AS "date",
-    e.createdbycommitteename AS "entity",
+    e.createdbycommitteename AS "committee",
     l.city,
     l.state,
     e.eventname,
@@ -32,7 +52,7 @@ CREATE TEMP TABLE closed_shifts_YTD AS (
   SELECT
     e.eventid,
     e.dateoffsetbegin::date AS "date",
-    e.createdbycommitteename AS "entity",
+    e.createdbycommitteename AS "committee",
     l.city,
     l.state,
     e.eventname,
@@ -55,10 +75,10 @@ CREATE TEMP TABLE closed_shifts_YTD AS (
     1
 );
 
-CREATE TABLE reporting.imfor_events_ytd
+CREATE TABLE reporting.imfor_events_ytd_26
 AS
 SELECT
-  e.entity,
+  e.committee,
   COUNT(DISTINCT e.eventid) AS total_events,
   COUNT(DISTINCT shifts.eventsignupid) AS closed_shifts
 FROM
@@ -70,7 +90,27 @@ ORDER BY
   1;
 
 
---Closed volunteer leader shifts/ closed storyteller shifts 
+-- Stories
+DROP TABLE IF EXISTS reporting.im_for_stories_ytd_26;
+
+CREATE TABLE reporting.im_for_stories_ytd_26 AS
+SELECT
+  com.committeename AS "committee",
+  cn.notecategoryname,
+  COUNT(DISTINCT cn.contactsnoteid) AS total_count
+FROM
+  vansync.ppfa_contactsnotes_mym cn
+  JOIN vansync.ppfa_contacts_mym_cont c USING (vanid)
+  JOIN vansync.ppfa_contactsactivistcodes_mym s USING (vanid)
+  JOIN vansync.ppfa_committees com USING (committeeid)
+WHERE
+  cn.datecreated >= '2026-01-01'
+  AND s.activistcodeid = 4179673 -- Share Story
+  AND cn.notecategoryname NOT IN ("COG Stories". "Convio: Import Source"."COVID-19"."PPFA Online Storybank". "Segment"."Convio: Import Source" )
+GROUP BY
+  1;
+
+
 create temporary table shifts as
 select e.dateoffsetbegin::date, 
 case when e.createdbycommitteeid like '2%' then 'c4' else 'c3' end as "committee",
