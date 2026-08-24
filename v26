@@ -24,7 +24,7 @@ CREATE TEMP TABLE imfor_activity_YTD AS (
 
 
 
-drop table if exists reporting.imfor_events_ytd26;
+drop table if exists reporting.imfor_events_ytd;
 
 CREATE TEMP TABLE imfor_events_YTD AS (
   SELECT
@@ -95,21 +95,20 @@ DROP TABLE IF EXISTS reporting.im_for_stories_ytd_26;
 
 CREATE TABLE reporting.im_for_stories_ytd_26 AS
 SELECT
-  com.committeename AS "committee",
+  com.committeename AS committee,
   cn.notecategoryname,
   COUNT(DISTINCT cn.contactsnoteid) AS total_count
 FROM
   vansync.ppfa_contactsnotes_mym cn
   JOIN vansync.ppfa_contacts_mym_cont c USING (vanid)
   JOIN vansync.ppfa_contactsactivistcodes_mym s USING (vanid)
-  JOIN vansync.ppfa_committees com USING (committeeid)
+  JOIN vansync.ppfa_committees com ON com.committeeid = cn.committeeid
 WHERE
   cn.datecreated >= '2026-01-01'
   AND s.activistcodeid = 4179673 -- Share Story
-  AND cn.notecategoryname NOT IN ("COG Stories". "Convio: Import Source"."COVID-19"."PPFA Online Storybank". "Segment"."Convio: Import Source" )
+  AND cn.notecategoryname NOT IN ('COG Stories', 'Convio: Import Source','COVID-19','PPFA Online Storybank', 'Segment','Convio: Import Source' )
 GROUP BY
-  1;
-
+  1,2;
 
 create temporary table shifts as
 select e.dateoffsetbegin::date, 
