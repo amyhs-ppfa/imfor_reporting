@@ -1,0 +1,130 @@
+---I'm For Key Metrics // Short-term 
+
+
+---People's Brief Form Completions 
+create temporary table forms as
+select cm.datecreated::date,
+'c3' as "committee", 
+'Peoples Brief Sign On' as "metric", 
+d.state,
+d.congressionaldistrict,
+tar.targetstatus, 
+tar.rep_name, 
+count(distinct contactsonlineformid)  
+from vansync.ppfa_onlineforms_mym c
+join vansync.ppfa_contactsonlineforms_mym cm using(onlineformid)
+left join vansync.ppfa_contactsaddresses_mym ca using(vanid)
+left join vansync.ppfa_mymembersdwidlookup dwid using(vanid)
+left join (select concat(state, congressionaldistrict) as "congressionaldistrict", state, dwid from catalist_periodic_install.district) d using(dwid)
+left join awarrington.august_recess_targets tar on d.state=tar.state and d.congressionaldistrict=tar.congressionaldistrict
+where cm.datecreated::date>='2025-07-20'
+and onlineformname='2507_c3_EmailForm_DefundLawsuit_None_1018960'
+group by 1,2,3,4,5,6,7
+;
+
+
+--Committ to Call
+create temporary table commit_call as 
+select datecanvassed::date,
+case when com.committeename like '2%' then 'c4' else 'c3' end as "committee", 
+'Members Called - SQ' as "metric", 
+d.state,
+d.congressionaldistrict,
+tar.targetstatus, 
+tar.rep_name, 
+count(distinct contactscontactid) 
+from vansync.ppfa_contactssurveyresponses_mym cr
+join vansync.ppfa_committees com using(committeeid)
+left join vansync.ppfa_mymembersdwidlookup dwid using(vanid)
+left join (select concat(state, congressionaldistrict) as "congressionaldistrict", state, dwid from catalist_periodic_install.district) d using(dwid)
+left join awarrington.august_recess_targets tar on d.state=tar.state and d.congressionaldistrict=tar.congressionaldistrict
+where surveyquestionid=668452 and surveyresponseid=2692564
+and cr.datecanvassed>='2025-07-21'
+group by 1,2,3,4,5,6,7
+union 
+select created_at::date as datecanvassed, 
+case when call_number_name ilike '%c3%' then 'c3' when call_number_name ilike '%c4%' then 'c4' else null end as "committee", 
+'Members Called - Click to Call' as "metric", 
+c.state, 
+tar.congressionaldistrict, 
+tar.targetstatus, name as "rep_name",  
+count(distinct id) 
+from  strive.call_logs c 
+left join awarrington.august_recess_targets tar on c.name=tar.rep_name and c.state=tar.state
+where call_number_name ilike 'C2C%'
+and created_at>='2025-07-20'
+group by 1,2,3,4,5,6,7
+;
+
+
+--Events with an I'm For tag 
+--Events
+create temporary table events as
+select e.dateoffsetbegin::date, case when e.createdbycommitteeid like '2%' then 'c4' else 'c3' end as "committee",'events' as "metric",NUll as state, NUll as congressionaldistrict,NUll as targetstatus, NUll as rep_name, count(distinct e.eventid)
+from vansync.ppfa_events_mym e 
+join vansync.ppfa_eventscodes_mym ec using(eventid)
+join vansync.ppfa_codes_mym c using(codeid)
+where  ec.codeid in (1004701,1015656, 1020444)
+and e.dateoffsetbegin>='2026-07-24'
+group by 1,2,3,4,5,6,7
+;
+
+
+--Closed volunteer leader shifts/ closed storyteller shifts 
+create temporary table shifts as
+select e.dateoffsetbegin::date, 
+case when e.createdbycommitteeid like '2%' then 'c4' else 'c3' end as "committee",
+case when eventrolename in ('Event Lead','Host','Speaker','Trainer') then 'closed volunteer leader shift'
+     when es.eventroleid=83269 then 'closed storyteller shift' else null end as "metric",
+d.state,
+d.congressionaldistrict,
+tar.targetstatus, 
+tar.rep_name,
+count(distinct es.eventsignupid)
+from vansync.ppfa_events_mym e 
+left join vansync.ppfa_eventsignups_mym es using(eventid)
+left join vansync.ppfa_mymembersdwidlookup dwid using(vanid)
+left join (select concat(state, congressionaldistrict) as "congressionaldistrict", state, dwid from catalist_periodic_install.district) d using(dwid)
+left join awarrington.august_recess_targets tar on d.state=tar.state and d.congressionaldistrict=tar.congressionaldistrict
+left join vansync.ppfa_eventsignupsstatuses_mym ess using(eventsignupid)
+join vansync.ppfa_eventscodes_mym ec using(eventid)
+join vansync.ppfa_codes_mym c using(codeid)
+where  ec.codeid in (1015656,1016813)
+and ess.eventstatusname in ('Completed','Walk In')
+and e.dateoffsetbegin>='2025-07-21'
+and "metric" is not null 
+group by 1,2,3,4,5,6,7 
+;
+
+--Calls and Doors 
+create temporary table vf as
+select vf.datecanvassed::date, 
+case when vf.committeeid=11607 then 'c3' else 'c4' end "committee",
+case when ct.contacttypename in ('Walk','Paid Walk') then 'doors knocked' when ct.contacttypename in ('Phone','Paid Call') then 'calls' else null end as "metric",
+d.state,
+d.congressionaldistrict,
+tar.targetstatus, 
+tar.rep_name,
+count(distinct vf.contactscontactid)
+from vansync.ppfa_contactscontacts_vf vf
+left join vansync.ppfa_voterfiledwidlookup dwid using(vanid,statecode)
+left join vansync.ppfa_contacttypes ct
+	on vf.contacttypeid=ct.contacttypeid
+left join (select concat(state, congressionaldistrict) as "congressionaldistrict", state, dwid from catalist_periodic_install.district) d on d.dwid=dwid.dwid and d.state=dwid.statecode 
+left join awarrington.august_recess_targets tar on d.state=tar.state and d.congressionaldistrict=tar.congressionaldistrict
+where  "metric" is not null 
+and vf.datecanvassed>='2025-07-21'
+group by 1,2,3,4,5,6,7
+;
+
+drop table if exists awarrington.imfor_25august_recess;
+create table awarrington.imfor_25august_recess  as 
+select * from forms 
+union 
+select * from commit_call 
+union 
+select * from events
+union
+select * from shifts
+union 
+select * from vf
