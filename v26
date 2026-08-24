@@ -1,0 +1,130 @@
+---I'm For Key Metrics // Short-term 
+
+
+
+
+
+rop table if exists reporting.imfor_events_ytd;
+
+CREATE TEMP TABLE imfor_events_YTD AS (
+  SELECT
+    e.eventid,
+    e.dateoffsetbegin::date AS "date",
+    e.createdbycommitteename AS "entity",
+    l.city,
+    l.state,
+    e.eventname,
+    e.eventdescription
+  FROM
+    vansync.ppfa_events_mym e
+    LEFT JOIN vansync.ppfa_eventslocations_mym loc USING (eventid)
+    LEFT JOIN vansync.ppfa_locations_mym l USING (locationid)
+    LEFT JOIN vansync.ppfa_eventscodes_mym ec USING (eventid)
+  WHERE
+    ec.codeid IN (1015656, 1016813, 1019521)
+    AND e.dateoffsetbegin >= '2026-01-01'
+    AND e.dateoffsetbegin < CURRENT_DATE
+  ORDER BY
+    1
+);
+
+CREATE TEMP TABLE closed_shifts_YTD AS (
+  SELECT
+    e.eventid,
+    e.dateoffsetbegin::date AS "date",
+    e.createdbycommitteename AS "entity",
+    l.city,
+    l.state,
+    e.eventname,
+    e.eventdescription,
+    es.eventsignupid,
+    ess.eventstatusname
+  FROM
+    vansync.ppfa_events_mym e
+    LEFT JOIN vansync.ppfa_eventslocations_mym loc USING (eventid)
+    LEFT JOIN vansync.ppfa_locations_mym l USING (locationid)
+    LEFT JOIN vansync.ppfa_eventscodes_mym ec USING (eventid)
+    LEFT JOIN vansync.ppfa_eventsignups_mym es USING (eventid)
+    LEFT JOIN vansync.ppfa_eventsignupsstatuses_mym ess USING (eventsignupid)
+  WHERE
+    ec.codeid IN (1015656, 1016813, 1019521)
+    AND e.dateoffsetbegin >= '2026-01-01'
+    AND e.dateoffsetbegin < CURRENT_DATE
+    AND ess.eventstatusname IN ('Completed', 'Walk In')
+  ORDER BY
+    1
+);
+
+CREATE TABLE reporting.imfor_events_ytd
+AS
+SELECT
+  e.entity,
+  COUNT(DISTINCT e.eventid) AS total_events,
+  COUNT(DISTINCT shifts.eventsignupid) AS closed_shifts
+FROM
+  imfor_events_YTD e
+  LEFT JOIN closed_shifts_YTD shifts USING (eventid)
+GROUP BY
+  1
+ORDER BY
+  1;
+
+
+--Closed volunteer leader shifts/ closed storyteller shifts 
+create temporary table shifts as
+select e.dateoffsetbegin::date, 
+case when e.createdbycommitteeid like '2%' then 'c4' else 'c3' end as "committee",
+case when eventrolename in ('Event Lead','Host','Speaker','Trainer') then 'closed volunteer leader shift'
+     when es.eventroleid=83269 then 'closed storyteller shift' else null end as "metric",
+d.state,
+d.congressionaldistrict,
+tar.targetstatus, 
+tar.rep_name,
+count(distinct es.eventsignupid)
+from vansync.ppfa_events_mym e 
+left join vansync.ppfa_eventsignups_mym es using(eventid)
+left join vansync.ppfa_mymembersdwidlookup dwid using(vanid)
+left join (select concat(state, congressionaldistrict) as "congressionaldistrict", state, dwid from catalist_periodic_install.district) d using(dwid)
+left join awarrington.august_recess_targets tar on d.state=tar.state and d.congressionaldistrict=tar.congressionaldistrict
+left join vansync.ppfa_eventsignupsstatuses_mym ess using(eventsignupid)
+join vansync.ppfa_eventscodes_mym ec using(eventid)
+join vansync.ppfa_codes_mym c using(codeid)
+where  ec.codeid in (1015656,1016813)
+and ess.eventstatusname in ('Completed','Walk In')
+and e.dateoffsetbegin>='2025-07-21'
+and "metric" is not null 
+group by 1,2,3,4,5,6,7 
+;
+
+--Calls and Doors 
+create temporary table vf as
+select vf.datecanvassed::date, 
+case when vf.committeeid=11607 then 'c3' else 'c4' end "committee",
+case when ct.contacttypename in ('Walk','Paid Walk') then 'doors knocked' when ct.contacttypename in ('Phone','Paid Call') then 'calls' else null end as "metric",
+d.state,
+d.congressionaldistrict,
+tar.targetstatus, 
+tar.rep_name,
+count(distinct vf.contactscontactid)
+from vansync.ppfa_contactscontacts_vf vf
+left join vansync.ppfa_voterfiledwidlookup dwid using(vanid,statecode)
+left join vansync.ppfa_contacttypes ct
+	on vf.contacttypeid=ct.contacttypeid
+left join (select concat(state, congressionaldistrict) as "congressionaldistrict", state, dwid from catalist_periodic_install.district) d on d.dwid=dwid.dwid and d.state=dwid.statecode 
+left join awarrington.august_recess_targets tar on d.state=tar.state and d.congressionaldistrict=tar.congressionaldistrict
+where  "metric" is not null 
+and vf.datecanvassed>='2025-07-21'
+group by 1,2,3,4,5,6,7
+;
+
+drop table if exists awarrington.imfor_25august_recess;
+create table awarrington.imfor_25august_recess  as 
+select * from forms 
+union 
+select * from commit_call 
+union 
+select * from events
+union
+select * from shifts
+union 
+select * from vf
