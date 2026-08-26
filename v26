@@ -141,30 +141,52 @@ WHERE
 GROUP BY
   1,2;
 
---- Calls to Leg
-create temporary table c2c as 
-select datecanvassed::date,
+--- Calls to Leg ---
+drop table if exists reporting.imfor_commit2call_ytd_26; 
+create  table reporting.imfor_commit2call_ytd_26 as 
+select 
+datecanvassed::date,
 com.committeename  as "committee", 
-'Members Called' as "metric", 
 d.state,
-concat(d.state,d.congressionaldistrict),
-tar.rep_name, 
+concat(d.state,d.congressionaldistrict) as district,
+cong.rep_name, 
 count(distinct contactscontactid) 
 from vansync.ppfa_contactssurveyresponses_mym cr
 join vansync.ppfa_committees com using(committeeid)
 join vansync.ppfa_mymembersdwidlookup dwid using(vanid)
 left join catalist_periodic_install.district d using(dwid)
-where surveyquestionid=684453 and surveyresponseid=2692564
-group by 1,2,3,4,5,6,7
-union 
-select created_at::date as datecanvassed, 
-'Members Called' as "member_calls", 
-c.state,
-tar.cd, 
-member as "rep_name",  
+left join aharpersmith.house_119_2026 cong on d.congressionaldistrict= cong.congresionaldistrict
+where surveyquestionid=668452 and surveyresponseid IN (2692564,2692566)
+AND  EXTRACT(YEAR FROM datecanvassed) = 2026
+group by 1,2,3,4,5
+union
+select datecanvassed::date,
+com.committeename  as "committee", 
+d.state,
+concat(d.state,d.congressionaldistrict) as district,
+cong.rep_name, 
+count(distinct contactscontactid) 
+from vansync.ppfa_contactssurveyresponses_mym cr
+join vansync.ppfa_committees com using(committeeid)
+join vansync.ppfa_mymembersdwidlookup dwid using(vanid)
+left join catalist_periodic_install.district d using(dwid)
+left join aharpersmith.house_119_2026 cong on d.congressionaldistrict = cong.congresionaldistrict
+where surveyquestionid=684453 and surveyresponseid IN (2753676,2753677)
+AND  EXTRACT(YEAR FROM datecanvassed) = 2026
+group by 1,2,3,4,5
+;
+
+drop table if exists reporting.imfor_c2c_ytd_26;
+create table reporting.imfor_c2c_ytd_26
+AS
+select 
+created_at::date as datecanvassed, 
+st.state,
+cong.congresionaldistrict,
+rep_name,  
 count(distinct id) 
 from  strive.call_logs st 
-left join aharpersmith.house_119_2026 tar on c.name=tar.rep_name and c.state=tar.state
+left join aharpersmith.house_119_2026 cong on st.name=cong.rep_name and st.state=cong.state
 where call_number_name ilike '%c2c%'
-group by 1,2,3,4,5,6,7
-;
+AND  EXTRACT(YEAR FROM created_at) = 2026
+group by 1,2,3,4
