@@ -1,13 +1,10 @@
----I'm For Key Metrics ---
-
-
+-----------------------------------------------------
+DROP TABLE IF EXISTS reporting.imfor_events_ytd_26;
+--- I'm For Key Metrics ---
 -- National Organizing Peak/2025-2026 I’m For
 -- National Organizing Peak/2025-2026 Elected Engagement
-
 -- breakdown by commitee
-
 -- how many events in x committee, zip, cong district
-
 -- Tags: 
 -- PP Generation Action
 -- Black Organizing
@@ -20,172 +17,265 @@
 -- constituency program activist code x committee, 
 -- new volunteer prospect/new contacts survey question applications x committee
 
+-----------------------------------------------------
 
-DROP TABLE IF exists reporting.imfor_events_YTD;
-CREATE TABLE reporting.imfor_events_YTD AS (
-  SELECT
-    e.eventid,
-    e.dateoffsetbegin::date AS "date",
-    e.createdbycommitteename AS "committee",
-    l.city,
-    l.state,
-    e.eventname,
-    e.eventdescription
-  FROM
-    vansync.ppfa_events_mym e
-    LEFT JOIN vansync.ppfa_eventslocations_mym loc USING (eventid)
-    LEFT JOIN vansync.ppfa_locations_mym l USING (locationid)
-    LEFT JOIN vansync.ppfa_eventscodes_mym ec USING (eventid)
-  WHERE
-    ec.codeid IN (1015656, 1016813, 1019521)
-    AND EXTRACT(YEAR FROM e.dateoffsetbegin::date) = 2026
-  ORDER BY
-    1
-);
-DROP TABLE IF EXISTS reporting.imfor_closed_shifts_YTD;
-CREATE TABLE reporting.imfor_closed_shifts_YTD AS (
-  SELECT
-    e.eventid,
-    e.dateoffsetbegin::date AS "date",
-    e.createdbycommitteename AS "committee",
-    l.city,
-    l.state,
-    e.eventname,
-    e.eventdescription,
-    es.eventsignupid,
-    ess.eventstatusname
-  FROM
-    vansync.ppfa_events_mym e
-    LEFT JOIN vansync.ppfa_eventslocations_mym loc USING (eventid)
-    LEFT JOIN vansync.ppfa_locations_mym l USING (locationid)
-    LEFT JOIN vansync.ppfa_eventscodes_mym ec USING (eventid)
-    LEFT JOIN vansync.ppfa_eventsignups_mym es USING (eventid)
-    LEFT JOIN vansync.ppfa_eventsignupsstatuses_mym ess USING (eventsignupid)
-  WHERE
-    ec.codeid IN (1015656, 1016813, 1019521)
-    AND EXTRACT(YEAR FROM e.dateoffsetbegin::date) = 2026
-    AND ess.eventstatusname IN ('Completed', 'Walk In')
-  ORDER BY
-    1
-);
+-- Base event data for 2026
+
+-----------------------------------------------------
+CREATE TABLE reporting.imfor_events_ytd_26 AS
+WITH
+events AS (
+    SELECT 
+        e.eventid,
+        e.dateoffsetbegin,
+        e.eventname,
+        e.eventdescription,
+        e.createdbycommitteename,
+        e.eventcalendarname
+    FROM vansync.ppfa_events_mym e
+    INNER JOIN vansync.ppfa_eventscodes_mym ec 
+        ON e.eventid = ec.eventid
+    WHERE ec.codeid IN (1015656, 1016813, 1019521)
+        AND EXTRACT(YEAR FROM e.dateoffsetbegin::date) = 2026
+)
+select * from events;
+
+
+-- Event signups with completion status
 DROP TABLE IF EXISTS reporting.imfor_total_signups_ytd_26;
-CREATE TABLE reporting.imfor_total_signups_ytd_26
-AS (
-SELECT
-    e.createdbycommitteename AS "committee",
-    l.state,
-   l.city,
-  COUNT(DISTINCT e.eventid) AS total_events,
-  COUNT(DISTINCT shifts.eventsignupid) AS closed_shifts
-FROM
-    vansync.ppfa_events_mym e
-  LEFT JOIN reporting.imfor_closed_shifts_YTD shifts USING (eventid)
-      LEFT JOIN vansync.ppfa_eventslocations_mym el USING (eventid)
-        LEFT JOIN vansync.ppfa_locations_mym l USING (locationid)
-GROUP BY
-  1,2,3
-ORDER BY
-  1
-);
+-- Events with location details
+create table reporting.imfor_total_signups_ytd_26
+AS 
+WITH
+events AS (
+    SELECT 
+        e.eventid,
+        e.dateoffsetbegin,
+        e.eventname,
+        e.eventdescription,
+        e.createdbycommitteename,
+        e.eventcalendarname
+    FROM vansync.ppfa_events_mym e
+    INNER JOIN vansync.ppfa_eventscodes_mym ec 
+        ON e.eventid = ec.eventid
+    WHERE ec.codeid IN (1015656, 1016813, 1019521)
+        AND EXTRACT(YEAR FROM e.dateoffsetbegin::date) = 2026
+),
+events_with_location AS (
+    SELECT 
+        e.eventid,
+        e.dateoffsetbegin::date AS event_date,
+        e.createdbycommitteename AS committee,
+        l.city,
+        l.state,
+        l.zip5,
+        e.eventname,
+        e.eventdescription
+    FROM events e
+    LEFT JOIN vansync.ppfa_eventslocations_mym el 
+        ON e.eventid = el.eventid
+    LEFT JOIN vansync.ppfa_locations_mym l 
+        ON el.locationid = l.locationid
+),
 
+event_signups AS (
+    SELECT 
+        e.eventid,
+        e.dateoffsetbegin::date AS event_date,
+        e.createdbycommitteename AS committee,
+        l.city,
+        l.state,
+        e.eventname,
+        e.eventdescription,
+        es.eventsignupid,
+        ess.eventstatusname
+    FROM events e
+    LEFT JOIN vansync.ppfa_eventslocations_mym el 
+        ON e.eventid = el.eventid
+    LEFT JOIN vansync.ppfa_locations_mym l 
+        ON el.locationid = l.locationid
+    LEFT JOIN vansync.ppfa_eventsignups_mym es 
+        ON e.eventid = es.eventid
+    LEFT JOIN vansync.ppfa_eventsignupsstatuses_mym ess 
+        ON es.eventsignupid = ess.eventsignupid
+    WHERE ess.eventstatusname IN ('Completed', 'Walk In')
+)
+select * from event_signups;
+
+
+-- Events summary by committee and location
+DROP TABLE IF EXISTS reporting.imfor_closed_shifts_ytd_26;
+CREATE TABLE reporting.imfor_closed_shifts_ytd_26 AS
+WITH
+events AS (
+    SELECT 
+        e.eventid,
+        e.dateoffsetbegin,
+        e.eventname,
+        e.eventdescription,
+        e.createdbycommitteename,
+        e.eventcalendarname
+    FROM vansync.ppfa_events_mym e
+    INNER JOIN vansync.ppfa_eventscodes_mym ec 
+        ON e.eventid = ec.eventid
+    WHERE ec.codeid IN (1015656, 1016813, 1019521)
+        AND EXTRACT(YEAR FROM e.dateoffsetbegin::date) = 2026
+),
+events_summary AS (
+    SELECT 
+        e.createdbycommitteename AS committee,
+        l.state,
+        l.city,
+        COUNT(DISTINCT e.eventid) AS total_events,
+        COUNT(DISTINCT shifts.eventsignupid) AS closed_shifts
+    FROM events e
+    LEFT JOIN reporting.imfor_closed_shifts_ytd shifts
+        ON e.eventid = shifts.eventid
+    LEFT JOIN vansync.ppfa_eventslocations_mym el
+        ON e.eventid = el.eventid
+    LEFT JOIN vansync.ppfa_locations_mym l 
+        ON el.locationid = l.locationid
+    GROUP BY 1, 2, 3
+)
+
+select * FROM events_summary; 
+
+-- Program by committee
 DROP TABLE IF EXISTS reporting.imfor_program_ytd_26;
 CREATE TABLE reporting.imfor_program_ytd_26
-AS (
-SELECT
-    com.committeename as committee,
-    CASE
-        WHEN cc.codeid = 4153016 THEN 'Patient Advocacy'
-        WHEN cc.codeid = 69342   THEN 'PP Generation Action'
-        WHEN cc.codeid = 4266967 THEN 'Raiz'
-        WHEN cc.codeid = 4471736 THEN 'Black Organizing'
-        WHEN cc.codeid = 1005174 THEN '50-State Virtual Volunteer'
-        
-        ELSE 'Other'
-    END AS program,
-    COUNT(DISTINCT cc.vanid) AS contacts
-FROM 
-    vansync.ppfa_contactscodes_mym cc
-    JOIN vansync.ppfa_contacts_mym_cont c ON cc.vanid = c.vanid
-    JOIN vansync.ppfa_committees com ON com.committeeid = cc.committeeid
-WHERE 
-    EXTRACT(YEAR FROM cc.datecreated) = 2026
-GROUP BY 
-    com.committeename,
-    CASE
-        WHEN cc.codeid = 4153016 THEN 'Patient Advocacy'
-        WHEN cc.codeid = 69342   THEN 'PP Generation Action'
-        WHEN cc.codeid = 4266967 THEN 'Raiz'
-        WHEN cc.codeid = 4471736 THEN 'Black Organizing'
-        WHEN cc.codeid = 1005174 THEN '50-State Virtual Volunteer'
-        ELSE 'Other'
-    END);
-    
--- Stories
+AS WITH
+-- Tags applied in 2026
+tags AS (
+    SELECT 
+        cc.vanid,
+        cc.codeid,
+        cc.committeeid,
+        cc.datecreated
+    FROM  vansync.ppfa_contactscodes_mym cc
+    WHERE EXTRACT(YEAR FROM cc.datecreated) = 2026
+        AND cc.codeid IN (4153016, 69342, 4266967, 4471736, 1005174)
+),
+program AS (
+    SELECT 
+        com.committeename AS committee,
+        CASE
+            WHEN cc.codeid = 4153016 THEN 'Patient Advocacy'
+            WHEN cc.codeid = 69342 THEN 'PP Generation Action'
+            WHEN cc.codeid = 4266967 THEN 'Raiz'
+            WHEN cc.codeid = 4471736 THEN 'Black Organizing'
+            WHEN cc.codeid = 1005174 THEN '50 State Volunteer'
+            ELSE 'Other'
+        END AS program,
+        COUNT(DISTINCT cc.vanid) AS contacts
+    FROM tags cc
+    INNER JOIN vansync.ppfa_contacts_mym_cont c 
+        ON cc.vanid = c.vanid
+    INNER JOIN vansync.ppfa_committees com
+        ON cc.committeeid = com.committeeid
+    GROUP BY 1, 2
+)
+
+SELECT * from program;
+
+-- Stories by committee
 DROP TABLE IF EXISTS reporting.im_for_stories_ytd_26;
 
-CREATE TABLE reporting.im_for_stories_ytd_26 AS
-SELECT
-  com.committeename AS committee,
-  cn.notecategoryname,
-  COUNT(DISTINCT cn.contactsnoteid) AS total_count
-FROM
-  vansync.ppfa_contactsnotes_mym cn
-  JOIN vansync.ppfa_contacts_mym_cont c USING (vanid)
-  JOIN vansync.ppfa_contactsactivistcodes_mym s USING (vanid)
-  JOIN vansync.ppfa_committees com ON com.committeeid = cn.committeeid
-WHERE
-  cn.datecreated >= '2026-01-01'
-  AND s.activistcodeid = 4179673 -- Share Story
-  AND cn.notecategoryname NOT IN ('COG Stories', 'Convio: Import Source','COVID-19','PPFA Online Storybank', 'Segment','Convio: Import Source' )
-GROUP BY
-  1,2;
+CREATE TABLE reporting.im_for_stories_ytd_26 
+AS WITH
+-- Notes/stories collected in 2026
+notes AS (
+    SELECT 
+        cn.contactsnoteid,
+        cn.vanid,
+        cn.committeeid,
+        cn.datecreated,
+        cn.notecategoryname
+    FROM vansync.ppfa_contactsnotes_mym    cn
+    WHERE EXTRACT(YEAR FROM cn.datecreated) = 2026
+        AND cn.notecategoryname NOT IN (
+            'COG Stories',
+            'Convio: Import Source',
+            'COVID-19',
+            'PPFA Online Storybank',
+            'Segment'
+        )
+),
 
---- Calls to Leg ---
-drop table if exists reporting.imfor_commit2call_ytd_26; 
-create  table reporting.imfor_commit2call_ytd_26 as 
-select 
-datecanvassed::date,
-com.committeename  as "committee", 
-d.state,
-concat(d.state,d.congressionaldistrict) as district,
-cong.rep_name, 
-count(distinct contactscontactid) 
-from vansync.ppfa_contactssurveyresponses_mym cr
-join vansync.ppfa_committees com using(committeeid)
-join vansync.ppfa_mymembersdwidlookup dwid using(vanid)
-left join catalist_periodic_install.district d using(dwid)
-left join aharpersmith.house_119_2026 cong on d.congressionaldistrict= cong.congresionaldistrict
-where surveyquestionid=668452 and surveyresponseid IN (2692564,2692566)
-AND  EXTRACT(YEAR FROM datecanvassed) = 2026
-group by 1,2,3,4,5
-union
-select datecanvassed::date,
-com.committeename  as "committee", 
-d.state,
-concat(d.state,d.congressionaldistrict) as district,
-cong.rep_name, 
-count(distinct contactscontactid) 
-from vansync.ppfa_contactssurveyresponses_mym cr
-join vansync.ppfa_committees com using(committeeid)
-join vansync.ppfa_mymembersdwidlookup dwid using(vanid)
-left join catalist_periodic_install.district d using(dwid)
-left join aharpersmith.house_119_2026 cong on d.congressionaldistrict = cong.congresionaldistrict
-where surveyquestionid=684453 and surveyresponseid IN (2753676,2753677)
-AND  EXTRACT(YEAR FROM datecanvassed) = 2026
-group by 1,2,3,4,5
-;
+stories AS (
+    SELECT 
+        com.committeename AS committee,
+        cn.notecategoryname,
+        COUNT(DISTINCT cn.contactsnoteid) AS total_count
+    FROM notes cn
+    INNER JOIN vansync.ppfa_contacts_mym_cont c
+        ON cn.vanid = c.vanid
+    INNER JOIN vansync.ppfa_contactsactivistcodes_mym s 
+        ON cn.vanid = s.vanid
+    INNER JOIN vansync.ppfa_committees com 
+        ON cn.committeeid = com.committeeid
+    WHERE s.activistcodeid = 4179673
+    GROUP BY 1, 2
+)
 
-drop table if exists reporting.imfor_c2c_ytd_26;
-create table reporting.imfor_c2c_ytd_26
-AS
-select 
-created_at::date as datecanvassed, 
-st.state,
-cong.congresionaldistrict,
-rep_name,  
-count(distinct id) 
-from  strive.call_logs st 
-left join aharpersmith.house_119_2026 cong on st.name=cong.rep_name and st.state=cong.state
-where call_number_name ilike '%c2c%'
-AND  EXTRACT(YEAR FROM created_at) = 2026
-group by 1,2,3,4
+select * from stories;
+-- Survey-based calls to legislators
+DROP TABLE IF EXISTS reporting.imfor_commit2call_ytd_26;
+
+CREATE table reporting.imfor_commit2call_ytd_26 AS
+WITH
+-- Survey responses for calls to legislators in 2026
+survey_responses AS (
+    SELECT 
+        sr.contactssurveyresponseid,
+        sr.vanid,
+        sr.contactscontactid,
+        sr.datecanvassed,
+        sr.committeeid,
+        sr.surveyquestionid,
+        sr.surveyresponseid
+    FROM vansync.ppfa_contactssurveyresponses_mym sr
+    WHERE EXTRACT(YEAR FROM sr.datecanvassed::date) = 2026
+        AND sr.surveyquestionid IN (684453, 668452)
+        AND sr.surveyresponseid IN (2753676, 2753677, 2692564, 2692566)
+),
+commit2call AS (
+    SELECT 
+        sr.datecanvassed::date,
+        com.committeename AS committee,
+        d.state,
+        (d.state || '-' || d.congressionaldistrict) AS district,
+        cong.rep_name,
+        COUNT(DISTINCT sr.contactscontactid) AS call_count
+    FROM survey_responses sr
+    INNER JOIN vansync.ppfa_committees com
+        ON sr.committeeid = com.committeeid
+    INNER JOIN vansync.ppfa_mymembersdwidlookup dw
+        ON sr.vanid = dw.vanid
+    LEFT JOIN catalist_periodic_install.district d 
+        ON dw.dwid = d.dwid
+    LEFT JOIN aharpersmith.house_119_2026 cong
+        ON d.congressionaldistrict = cong.congresionaldistrict
+        AND d.state = cong.state
+    GROUP BY 1, 2, 3, 4, 5
+)
+
+select * from commit2call;
+
+-- Strive-based calls to legislators
+DROP TABLE IF EXISTS reporting.imfor_c2c_ytd_26;
+CREATE TABLE reporting.imfor_c2c_ytd_26 AS
+WITH
+c2c AS (
+    SELECT 
+        cl.created_at::date AS call_date,
+        cl.state,
+        cong.congresionaldistrict,
+        cong.rep_name,
+        COUNT(DISTINCT cl.id) AS call_count
+    FROM strive.call_logs cl
+    LEFT JOIN aharpersmith.house_119_2026 cong
+        ON cl.name = cong.rep_name 
+        AND cl.state = cong.state
+    GROUP BY 1, 2, 3, 4 )
+
+select * FROM c2c
