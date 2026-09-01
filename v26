@@ -1,33 +1,28 @@
----I'm For Key Metrics // Short-term
-
-//* 
+---I'm For Key Metrics ---
 
 
-National Organizing Peak/2025-2026 I’m For
-National Organizing Peak/2025-2026 Elected Engagement
+-- National Organizing Peak/2025-2026 I’m For
+-- National Organizing Peak/2025-2026 Elected Engagement
 
-breakdown by commitee
+-- breakdown by commitee
 
-how many events in x committee, zip, cong district
+-- how many events in x committee, zip, cong district
 
-Tags: 
-PP Generation Action
-Black Organizing
-Raiz
-Patient Advocacy
+-- Tags: 
+-- PP Generation Action
+-- Black Organizing
+-- Raiz
+-- Patient Advocacy
+-- AC by committee
+-- PPNational with service are subcategories
+-- Call Elected
+-- im For Events x Committee, 
+-- constituency program activist code x committee, 
+-- new volunteer prospect/new contacts survey question applications x committee
 
-AC by committee
-PPNational with service are subcategories
-Call Elected
 
-
-im For Events x Committee, 
-constituency program activist code x committee, 
-new volunteer prospect/new contacts survey question applications x committee
-
-*//
-
-CREATE TABLE imfor_events_YTD AS (
+DROP TABLE IF exists reporting.imfor_events_YTD;
+CREATE TABLE reporting.imfor_events_YTD AS (
   SELECT
     e.eventid,
     e.dateoffsetbegin::date AS "date",
@@ -43,13 +38,12 @@ CREATE TABLE imfor_events_YTD AS (
     LEFT JOIN vansync.ppfa_eventscodes_mym ec USING (eventid)
   WHERE
     ec.codeid IN (1015656, 1016813, 1019521)
-    AND EXTRACT(YEAR FROM(e.dateoffsetbegin)= 2026
-    AND e.dateoffsetbegin < CURRENT_DATE
+    AND EXTRACT(YEAR FROM e.dateoffsetbegin::date) = 2026
   ORDER BY
     1
 );
-
-CREATE TEMP TABLE closed_shifts_YTD AS (
+DROP TABLE IF EXISTS reporting.imfor_closed_shifts_YTD;
+CREATE TABLE reporting.imfor_closed_shifts_YTD AS (
   SELECT
     e.eventid,
     e.dateoffsetbegin::date AS "date",
@@ -69,39 +63,43 @@ CREATE TEMP TABLE closed_shifts_YTD AS (
     LEFT JOIN vansync.ppfa_eventsignupsstatuses_mym ess USING (eventsignupid)
   WHERE
     ec.codeid IN (1015656, 1016813, 1019521)
-    AND  EXTRACT(YEAR FROM(e.dateoffsetbegin)= 2026
+    AND EXTRACT(YEAR FROM e.dateoffsetbegin::date) = 2026
     AND ess.eventstatusname IN ('Completed', 'Walk In')
   ORDER BY
     1
 );
-
+DROP TABLE IF EXISTS reporting.imfor_total_signups_ytd_26;
 CREATE TABLE reporting.imfor_total_signups_ytd_26
-AS
+AS (
 SELECT
-  e.committee,
+    e.createdbycommitteename AS "committee",
     l.state,
    l.city,
   COUNT(DISTINCT e.eventid) AS total_events,
   COUNT(DISTINCT shifts.eventsignupid) AS closed_shifts
 FROM
-  imfor_events_YTD e
-  LEFT JOIN closed_shifts_YTD shifts USING (eventid)
-      LEFT JOIN vansync.ppfa_locations_mym l USING (locationid)
+    vansync.ppfa_events_mym e
+  LEFT JOIN reporting.imfor_closed_shifts_YTD shifts USING (eventid)
+      LEFT JOIN vansync.ppfa_eventslocations_mym el USING (eventid)
+        LEFT JOIN vansync.ppfa_locations_mym l USING (locationid)
 GROUP BY
   1,2,3
 ORDER BY
-  1;
+  1
+);
 
 DROP TABLE IF EXISTS reporting.imfor_program_ytd_26;
 CREATE TABLE reporting.imfor_program_ytd_26
-AS
+AS (
 SELECT
-    com.committeename as committee
+    com.committeename as committee,
     CASE
         WHEN cc.codeid = 4153016 THEN 'Patient Advocacy'
         WHEN cc.codeid = 69342   THEN 'PP Generation Action'
         WHEN cc.codeid = 4266967 THEN 'Raiz'
         WHEN cc.codeid = 4471736 THEN 'Black Organizing'
+        WHEN cc.codeid = 1005174 THEN '50-State Virtual Volunteer'
+        
         ELSE 'Other'
     END AS program,
     COUNT(DISTINCT cc.vanid) AS contacts
@@ -112,14 +110,15 @@ FROM
 WHERE 
     EXTRACT(YEAR FROM cc.datecreated) = 2026
 GROUP BY 
-    cc.committeeid,
+    com.committeename,
     CASE
         WHEN cc.codeid = 4153016 THEN 'Patient Advocacy'
         WHEN cc.codeid = 69342   THEN 'PP Generation Action'
         WHEN cc.codeid = 4266967 THEN 'Raiz'
         WHEN cc.codeid = 4471736 THEN 'Black Organizing'
+        WHEN cc.codeid = 1005174 THEN '50-State Virtual Volunteer'
         ELSE 'Other'
-    END;
+    END);
     
 -- Stories
 DROP TABLE IF EXISTS reporting.im_for_stories_ytd_26;
